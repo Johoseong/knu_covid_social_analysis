@@ -1,6 +1,5 @@
 import requests
 import json
-import datetime
 import time
 import emoji
 import ast
@@ -20,8 +19,6 @@ class Crawling:
 
         # Optional params: start_time,end_time,since_id,until_id,max_results,next_token,
         # expansions,tweet.fields,media.fields,poll.fields,place.fields,user.fields
-        # self.query_params = {'query': '', 'tweet.fields': 'created_at,lang,author_id', 'expansions': 'author_id,geo.place_id', 'place.fields': 'country',
-        #                      'start_time': '2016-01-01T00:00:00Z', 'end_time': '2021-01-01T00:00:00Z', 'max_results': '500'}
         self.query_params = {'query': '', 'tweet.fields': 'created_at,lang,author_id',
                               'start_time': '2016-01-01T00:00:00Z', 'end_time': '2021-01-01T00:00:00Z', 'max_results': '500'}
         self.query_params_id = {'tweet.fields': 'created_at,lang,author_id,geo', 'start_time': '2016-01-01T00:00:00Z', 'end_time': '2021-01-01T00:00:00Z',
@@ -40,61 +37,6 @@ class Crawling:
             raise Exception(response.status_code, response.text)
         return response.json()
 
-    def connect_to_endpoint_id(self, headers):
-        response = requests.request("GET", self.search_url_from_id, headers=headers, params=self.query_params_id)
-        # print(response.status_code)
-        if response.status_code != 200:
-            raise Exception(response.status_code, response.text)
-        return response.json()
-
-    def main_act_id(self, author_id_info, start_time, end_time):
-        fw = open(author_id_info + " " + start_time[0:10] + "~" + end_time[0:10] + ".txt", "w")
-        self.search_url_from_id = self.search_url_from_id + author_id_info + "/tweets"
-        self.query_params_id['start_time'] = start_time
-        self.query_params_id['end_time'] = end_time
-        self.crawling_part_id(fw)
-
-    def main_act_months(self, brand_list, drug_name, start_year, end_year):
-        self.query_params['tweet.fields'] = "lang,created_at,author_id"
-        self.query_params['expansions'] = "geo.place_id"
-        self.query_params['place.fields'] = "country"
-        for year in range(start_year, end_year + 1):
-            for month in range(2, 14):
-                if month == 13:
-                    self.query_params['end_time'] = str(year + 1) + "-" + str(1).zfill(2) + "-01T00:00:00Z"
-                    self.query_params['start_time'] = str(year) + "-" + str(month - 1).zfill(2) + "-01T00:00:00Z"
-                else:
-                    self.query_params['end_time'] = str(year) + "-" + str(month).zfill(2) + "-01T00:00:00Z"
-                    self.query_params['start_time'] = str(year) + "-" + str(month - 1).zfill(2) + "-01T00:00:00Z"
-                fw = open(drug_name + " " + self.query_params['start_time'][0:10] + "~" + self.query_params['end_time'][
-                                                                                          0:10] + ".txt", "w", encoding="UTF8")
-                for brand_name in brand_list:
-                    self.query_params['query'] = brand_name
-                    print(self.query_params)
-                    self.crawling_part(fw)
-                fw.close()
-
-    def main_act_weeks(self, brand_list, drug_name):
-        date = datetime.date(2020, 2, 1)
-        self.query_params['start_time'] = str(date) + "T00:00:00Z"
-        while True:
-            date = date + datetime.timedelta(weeks=1)
-            self.query_params['end_time'] = str(date) + "T00:00:00Z"
-            dateforcheck = str(date)
-            if dateforcheck[0:7] == "2020-03":
-                break
-
-            # main activity
-            fw = open(drug_name + " " + self.query_params['start_time'][0:10] + "~" + self.query_params['end_time'][
-                                                                                      0:10] + ".txt", "w")
-            for brand_name in brand_list:
-                self.query_params['query'] = brand_name
-                print(self.query_params)
-                self.crawling_part(fw)
-            fw.close()
-
-            self.query_params['start_time'] = str(date) + "T00:00:00Z"
-
     def main_act_indi(self, brand_list, drug_name, start_time, end_time):
         self.query_params['start_time'] = start_time
         self.query_params['end_time'] = end_time
@@ -103,28 +45,35 @@ class Crawling:
         self.query_params['place.fields'] = "country"
         # main activity
         fw = open(drug_name + " " + self.query_params['start_time'][0:10] + "~" + self.query_params['end_time'][
-                                                                                  0:10] + ".txt", "w", encoding="UTF8") # illegal multibyte sequence 오류 -> UTF8 설정으로 고침
+                                                                                  0:10] + ".json", "w", encoding="UTF8") # illegal multibyte sequence 오류 -> UTF8 설정으로 고침
         for brand_name in brand_list:
             self.query_params['query'] = brand_name
             print(self.query_params)
             self.crawling_part(fw)
 
+    ''' start crawling 
+     parameter : 크롤링 결과가 담길 json 파일 객체 '''
     def crawling_part(self, fw):
         headers = self.create_headers()
+
+        # crawling 후 json_response에 twit 데이터 저장 
         json_response = self.connect_to_endpoint(headers)
+        ## twit text 문장 안에 '/" 있을 시 json으로 파싱 에러 -> 제거해줌
         for i in range(0, len(json_response['data'])):
             json_response['data'][i]['text'] = json_response['data'][i]['text'].replace("'", "").replace('"', "")
 
+        # 이모티콘/느낌표,물음표 제거 (이모티콘 제거 안할 시 -> encoding 에러 발생)
         json_response = str(json_response)
-        # print(json_response)
         json_response = emoji.get_emoji_regexp().sub(r'', json_response)
-        json_response = re.sub(r'[^ 0-9ㄱ-ㅣ가-힣A-Za-z.,!?"\':;~_\-@(){}\[\]]', '', json_response)
+        json_response = re.sub(r'[^ 0-9ㄱ-ㅣ가-힣A-Za-z.,"\':;_\-@(){}\[\]]', '', json_response)
         json_response = ast.literal_eval(json_response)
 
+        # json 파싱
         data = json.dumps(json_response, indent=4, sort_keys=True)
         data = data.encode('utf-8')
-        data = data.decode('unicode_escape', 'replace') # 한글 출력 위해 decode 해줌
-        # data = data.decode(encoding='utf-16', errors='ignore')
+        # 한글 출력 위한 decode
+        data = data.decode('unicode_escape', 'replace')
+
         fw.write(data)
         try:
             self.query_params['next_token'] = json_response['meta']['next_token']
@@ -133,25 +82,7 @@ class Crawling:
             self.query_params['next_token'] = "DUMMY"
             del self.query_params['next_token']
             # print(e)
-            time.sleep(3) #2
+            time.sleep(3)
             return
-        time.sleep(3) # 2
+        time.sleep(3)
         self.crawling_part(fw)
-
-    def crawling_part_id(self, fw):
-        print(self.query_params_id)
-        headers = self.create_headers()
-        json_response = self.connect_to_endpoint_id(headers)
-        data = json.dumps(json_response, indent=4, sort_keys=True)
-        fw.write(data)
-        try:
-            self.query_params_id['pagination_token'] = json_response['meta']['next_token']
-        except Exception as e:
-            print("done")
-            self.query_params_id['pagination_token'] = "DUMMY"
-            del self.query_params_id['pagination_token']
-            # print(e)
-            time.sleep(2)
-            return
-        time.sleep(2)
-        self.crawling_part_id(fw)
